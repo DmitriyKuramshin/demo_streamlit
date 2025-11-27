@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import requests
 import json
@@ -6,7 +7,16 @@ from typing import List
 # =====================================================
 # CONFIGURATION
 # =====================================================
-API_URL = "http://localhost:8000/search"  # Your FastAPI endpoint
+
+# Base URL of your FastAPI app on Render
+# You can override it with an env variable when needed
+API_BASE_URL = os.getenv(
+    "API_BASE_URL",
+    "https://elastic-fast-api.onrender.com"  # default: your Render URL
+)
+
+SEARCH_URL = f"{API_BASE_URL}/search"
+HEALTH_URL = f"{API_BASE_URL}/deep-health"
 
 st.set_page_config(
     page_title="Hybrid Search Demo",
@@ -33,7 +43,7 @@ with st.form("search_form"):
     size = st.slider("Number of results", min_value=1, max_value=50, value=10)
     use_vector = st.checkbox("Use Vector (Hybrid) Search", value=True)
     alpha = st.slider("Vector weight (alpha)", 0.0, 1.0, 0.5, step=0.1)
-    highlight_matches = st.checkbox("Highlight matches", value=True)  # new
+    highlight_matches = st.checkbox("Highlight matches", value=True)
     show_debug = st.checkbox("Show debug info", value=False)
     submitted = st.form_submit_button("Run Search")
 
@@ -53,7 +63,7 @@ def search_api(
         "size": size,
         "use_vector": use_vector,
         "alpha": alpha,
-        "use_highlight": highlight_matches,  # new
+        "use_highlight": highlight_matches,
         "filter": {
             "trading_types": [],
             "in_vehicle_ids": [],
@@ -61,15 +71,13 @@ def search_api(
         }
     }
     
-    # DEBUG: Print the payload
     if show_debug:
         st.write("**Debug: Sending payload:**")
         st.json(payload)
 
     try:
-        response = requests.post(API_URL, json=payload, timeout=30)
+        response = requests.post(SEARCH_URL, json=payload, timeout=30)
         
-        # DEBUG: Print response status
         if show_debug:
             st.write(f"**Response status:** {response.status_code}")
         
@@ -101,7 +109,6 @@ if submitted:
             if not hits:
                 st.info("No results found.")
             else:
-                # Create expandable cards for each hit
                 for i, hit in enumerate(hits, start=1):
                     with st.expander(f"#{i} - {hit.get('name_az_d4', hit.get('code', 'No Name'))}"):
                         col1, col2 = st.columns([3, 1])
@@ -114,7 +121,6 @@ if submitted:
                             highlight = hit.get("highlight") if highlight_matches else None
 
                             def render_field(label: str, field_name: str):
-                                # prefer Elasticsearch highlight snippet if available
                                 if highlight and highlight.get(field_name):
                                     snippet = highlight[field_name][0]
                                     st.markdown(f"**{label}:** {snippet}", unsafe_allow_html=True)
@@ -154,10 +160,10 @@ with st.sidebar:
     
     if st.button("Check API Health"):
         try:
-            health_response = requests.get("http://localhost:8000/health", timeout=5)
+            health_response = requests.get(HEALTH_URL, timeout=5)
             if health_response.status_code == 200:
                 health_data = health_response.json()
-                st.success("✅ API is healthy")
+                st.success("✅ API is reachable")
                 st.json(health_data)
             else:
                 st.error(f"⚠️ API returned status: {health_response.status_code}")
@@ -179,4 +185,3 @@ with st.sidebar:
 # =====================================================
 st.markdown("---")
 st.caption("© 2025 Hybrid Search Demo - FastAPI + Streamlit + Elasticsearch")
-
