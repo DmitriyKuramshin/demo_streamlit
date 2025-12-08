@@ -8,11 +8,11 @@ from typing import List
 # CONFIGURATION
 # =====================================================
 
-# Base URL of your FastAPI app on Render
+# Base URL of your FastAPI app 
 # You can override it with an env variable when needed
 API_BASE_URL = os.getenv(
     "API_BASE_URL",
-    "https://elastic-fast-api.onrender.com"  # default: your Render URL
+    "https://dmitriykuramshin-demoapi.hf.space"
 )
 
 SEARCH_URL = f"{API_BASE_URL}/search"
