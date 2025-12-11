@@ -17,6 +17,8 @@ API_BASE_URL = os.getenv(
 
 SEARCH_URL = f"{API_BASE_URL}/search"
 HEALTH_URL = f"{API_BASE_URL}/deep-health"
+# NEW: spelling correction endpoint
+SPELLING_URL = f"{API_BASE_URL}/spellingcorrection"
 
 st.set_page_config(
     page_title="Hybrid Search Demo",
@@ -41,9 +43,11 @@ st.markdown(
 with st.form("search_form"):
     query = st.text_input("Enter your search query:", placeholder="e.g. aluminium sheets")
     size = st.slider("Number of results", min_value=1, max_value=50, value=10)
-    use_vector = st.checkbox("Use Vector (Hybrid) Search", value=True)
+    use_vector = st.checkbox("Use Vector (Hybrid) Search", value=False)
     alpha = st.slider("Vector weight (alpha)", 0.0, 1.0, 0.5, step=0.1)
     highlight_matches = st.checkbox("Highlight matches", value=True)
+    # NEW: control whether to run spelling correction or not
+    use_spelling_correction = st.checkbox("Use spelling correction", value=False)
     show_debug = st.checkbox("Show debug info", value=False)
     submitted = st.form_submit_button("Run Search")
 
@@ -72,14 +76,14 @@ def search_api(
     }
     
     if show_debug:
-        st.write("**Debug: Sending payload:**")
+        st.write("**Debug: Sending payload to /search:**")
         st.json(payload)
 
     try:
         response = requests.post(SEARCH_URL, json=payload, timeout=30)
         
         if show_debug:
-            st.write(f"**Response status:** {response.status_code}")
+            st.write(f"**Search response status:** {response.status_code}")
         
         response.raise_for_status()
         return response.json()
@@ -93,6 +97,48 @@ def search_api(
             st.error(f"**Response text:** {e.response.text}")
         return None
 
+# NEW: spelling correction helper
+def spelling_correction_api(
+    query: str,
+    show_debug: bool = False
+) -> str:
+    """
+    Send the user query to the spelling correction endpoint.
+    Adjust payload / response keys based on your FastAPI implementation.
+    """
+    payload = {"query": query}
+
+    if show_debug:
+        st.write("**Debug: Sending payload to /spellingcorrection:**")
+        st.json(payload)
+
+    try:
+        response = requests.post(SPELLING_URL, json=payload, timeout=10)
+
+        if show_debug:
+            st.write(f"**Spelling correction status:** {response.status_code}")
+
+        response.raise_for_status()
+        data = response.json()
+
+        # Adjust this part to match the actual response schema of your API.
+        corrected = (
+            data.get("corrected_query")
+            or data.get("corrected")
+            or data.get("query")
+        )
+
+        if not corrected:
+            # If the API did not return a corrected form, fall back to original
+            if show_debug:
+                st.write("No corrected query in response, using original.")
+            return query
+
+        return corrected
+    except requests.exceptions.RequestException as e:
+        st.warning(f"Spelling correction failed, using original query. Error: {e}")
+        return query
+
 # =====================================================
 # RUN SEARCH AND DISPLAY RESULTS
 # =====================================================
@@ -100,8 +146,23 @@ if submitted:
     if not query.strip():
         st.warning("⚠️ Please enter a query.")
     else:
+        # Decide which query to send to /search
+        search_query = query
+
+        if use_spelling_correction:
+            with st.spinner("Running spelling correction..."):
+                corrected_query = spelling_correction_api(query, show_debug=show_debug)
+            search_query = corrected_query
+
+            # Show the user what is actually being searched
+            if corrected_query != query:
+                st.info(f"Using corrected query: `{corrected_query}`")
+            else:
+                st.info("Spelling correction did not change the query.")
+
         with st.spinner("Searching..."):
-            result = search_api(query, size, use_vector, alpha, highlight_matches, show_debug)
+            result = search_api(search_query, size, use_vector, alpha, highlight_matches, show_debug)
+
         if result:
             st.success(f"✅ Found {result.get('total-hits', 0)} hits")
 
